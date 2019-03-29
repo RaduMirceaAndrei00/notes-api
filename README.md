@@ -1,2 +1,2 @@
 # notes-api
-This is the backend part of the Notes app
+This is the back end part of the BestNotes app
