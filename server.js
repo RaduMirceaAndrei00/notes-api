@@ -99,44 +99,66 @@ router.post('/users/register', function(req, res){
                 res.json({ message: "This email adress is already used" });
                 db.close();
                 return;
-            }
-            bcrypt.hash(item.password, saltRounds, function(err, hash){
-                if(err)
+            } 
+            //!!! AICI CRIPTEZ email-ul pentru a crea confirmation token-ul
+
+            var activationToken = cryptoJS.AES.encrypt(item.email, KEY).toString();
+            //console.log(activationToken);
+            activationToken = encodeURIComponent(activationToken);
+            /*console.log(activationToken);
+            activationToken = decodeURIComponent(activationToken);
+            var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
+            console.log(decryptedToken.toString(cryptoJS.enc.Utf8));*/
+            var mailOptions = {
+                from: 'bestnotes16@gmail.com',
+                to: item.email,
+                subject: 'Activare cont BestNotes',
+                text: 'Dati click pe link-ul:http://localhost:8084/users/'+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
+            };
+            transporter.sendMail(mailOptions, function(err, info){
+                if(err){
                     res.send(err);
-                item.password = hash;
-                item.passwordConfirmation = hash;
-                Users.insertOne(item, function(err, result){
+                    console.log(err);
+                    db.close();
+                    return;
+                }
+                console.log('Email-ul de validare cont a fost trimis la adresa dumeneavoastra de mail'+info.response);
+                bcrypt.hash(item.password, saltRounds, function(err, hash){
                     if(err)
                         res.send(err);
-                    res.json({ message: "Utilizator creat cu succes!" }); 
-
-                    //!!! AICI CRIPTEZ email-ul pentru a crea confirmation token-ul
-                    var activationToken = cryptoJS.AES.encrypt(item.email, KEY).toString();
-                    console.log(activationToken);
-                    activationToken = encodeURIComponent(activationToken);
-                    var mailOptions = {
-                        from: 'bestnotes16@gmail.com',
-                        to: item.email,
-                        subject: 'Activare cont BestNotes',
-                        text: 'Dati click pe link-ul:http://localhost:8084/users/'+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
-                    };
-                    transporter.sendMail(mailOptions, function(err, info){
-                        if(err){
+                    item.password = hash;
+                    item.passwordConfirmation = hash;
+                    Users.insertOne(item, function(err, result){
+                        if(err)
                             res.send(err);
-                            console.log(err);
-                            db.close();
-                            return;
-                        }
-                        console.log('Email-ul de validare cont a fost trimis la adresa dumeneavoastra de mail'+info.response);
+                        res.json({ message: "Utilizator creat cu succes!" });
                         db.close();
                     });
-                    /*console.log(activationToken);
-                    activationToken = decodeURIComponent(activationToken);
-                    var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
-                    console.log(decryptedToken.toString(cryptoJS.enc.Utf8));*/
-                    
                 });
             });
+        });
+    });
+});
+router.get('/users/:token', function(req, res){
+    var activationToken = req.params.token;
+    activationToken = decodeURIComponent(activationToken);
+    var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
+    decryptedToken = decryptedToken.toString(cryptoJS.enc.Utf8);
+    mongo.connect(url, { useNewUrlParser: true }, function(err, db){
+        if(err){
+            res.send(err);
+            db.close();
+            return;
+        }
+        var dbo = db.db("mydb");
+        dbo.collection('user-data').updateOne({ email: decryptedToken }, { $set: { active: true } }, function(err, user){
+            if(err){
+                res.send(err);
+                db.close();
+                return;
+            }
+            console.log("Contul utilizatorului cu mail-ul "+decryptedToken+" a fost activat");
+            db.close();
         });
     });
 });
