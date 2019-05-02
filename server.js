@@ -3,6 +3,18 @@ var app = express();
 var bodyParser = require('body-parser');
 var mongo = require('mongodb');
 
+var nodemailer = require('nodemailer');
+var transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'bestnotes16@gmail.com',
+        pass: 'mirad28@yahoo.com'
+    }
+});
+
+var bcrypt = require('bcrypt');
+const saltRounds= 10; 
+
 var cryptoJS = require('crypto-js');
 var AES =  require('crypto-js/aes');
 var SHA256 = require('crypto-js/sha256');
@@ -16,7 +28,7 @@ var port = process.env.PORT || 8084;
 
 var router = express.Router();
 
-var KEY = "5166546A576E5A72";
+const KEY = "5166546A576E5A72";
 
 router.use(function(req, res, next){
     console.log('Something is happening');
@@ -38,6 +50,10 @@ router.post('/users/register', function(req, res){
         phoneNumber: req.body.phoneNumber,
         active: false
     };
+    /*if( item.password!==req.body.passwordConfirmation ){
+        res.json({ message: "Parola din campul parola difera de cea din campul confirmare parola, va rog sa le introduceti din nou" });
+        return;
+    }*/
     if( item.password!==item.passwordConfirmation ){
         res.json({ message: "Parola din campul parola difera de cea din campul confirmare parola, va rog sa le introduceti din nou" });
         return;
@@ -81,22 +97,45 @@ router.post('/users/register', function(req, res){
                 res.send(err);
             if(user){
                 res.json({ message: "This email adress is already used" });
+                db.close();
                 return;
             }
-            Users.insertOne(item, function(err, result){
+            bcrypt.hash(item.password, saltRounds, function(err, hash){
                 if(err)
                     res.send(err);
-                res.json({ message: "Utilizator creat cu succes!" }); 
+                item.password = hash;
+                item.passwordConfirmation = hash;
+                Users.insertOne(item, function(err, result){
+                    if(err)
+                        res.send(err);
+                    res.json({ message: "Utilizator creat cu succes!" }); 
 
-                //!!! AICI CRIPTEZ email-ul pentru a crea confirmation token-ul
-                var activationToken = cryptoJS.AES.encrypt(item.email, KEY).toString();
-                console.log(activationToken);
-                activationToken = encodeURIComponent(activationToken);
-                console.log(activationToken);
-                activationToken = decodeURIComponent(activationToken);
-                var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
-                console.log(decryptedToken.toString(cryptoJS.enc.Utf8));
-                db.close();
+                    //!!! AICI CRIPTEZ email-ul pentru a crea confirmation token-ul
+                    var activationToken = cryptoJS.AES.encrypt(item.email, KEY).toString();
+                    console.log(activationToken);
+                    activationToken = encodeURIComponent(activationToken);
+                    var mailOptions = {
+                        from: 'bestnotes16@gmail.com',
+                        to: item.email,
+                        subject: 'Activare cont BestNotes',
+                        text: 'Dati click pe link-ul:http://localhost:8084/users/'+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
+                    };
+                    transporter.sendMail(mailOptions, function(err, info){
+                        if(err){
+                            res.send(err);
+                            console.log(err);
+                            db.close();
+                            return;
+                        }
+                        console.log('Email-ul de validare cont a fost trimis la adresa dumeneavoastra de mail'+info.response);
+                        db.close();
+                    });
+                    /*console.log(activationToken);
+                    activationToken = decodeURIComponent(activationToken);
+                    var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
+                    console.log(decryptedToken.toString(cryptoJS.enc.Utf8));*/
+                    
+                });
             });
         });
     });
