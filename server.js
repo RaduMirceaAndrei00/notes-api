@@ -3,6 +3,9 @@ var app = express();
 var bodyParser = require('body-parser');
 var mongo = require('mongodb');
 var jwt = require('jsonwebtoken');
+var cors = require('cors');
+
+app.use(cors({origin: [/localhost/i]}));
 
 var nodemailer = require('nodemailer');
 var transporter = nodemailer.createTransport({
@@ -121,7 +124,7 @@ router.post('/users/register', function(req, res){
             if(err)
                 res.send(err);
             if(user){
-                res.json({ message: "This email adress is already used" });
+                res.json({ message: "Adresa de mail e deja folosita!" });
                 db.close();
                 return;
             } 
@@ -147,16 +150,18 @@ router.post('/users/register', function(req, res){
                     db.close();
                     return;
                 }
-                res.json({ message: 'Email-ul de validare cont a fost trimis la adresa dumeneavoastra de mail' });
+                //res.json({ message: 'Email-ul de validare cont a fost trimis la adresa dumeneavoastra de mail' });
                 bcrypt.hash(item.password, saltRounds, function(err, hash){
                     if(err)
                         res.send(err);
                     item.password = hash;
                     item.passwordConfirmation = hash;
                     Users.insertOne(item, function(err, result){
-                        if(err)
+                        if(err){
                             res.send(err);
-                        res.json({ message: "Utilizator creat cu succes!" });
+                            return;
+                        }
+                        res.json({ message: "Utilizator creat cu succes! Aplicatia noastra va va trimite un mail de validare in cateva momente. Verificati mail-ul pentru a va activa contul, apoi puteti accesa link-ul de autentificare." });
                         db.close();
                     });
                 });
@@ -182,7 +187,7 @@ router.get('/users/activation/:token', function(req, res){
                 db.close();
                 return;
             }
-            res.json({ message: "Contul utilizatorului cu mail-ul "+decryptedToken+" a fost activat" });
+            //res.json({ message: "Contul utilizatorului cu mail-ul "+decryptedToken+" a fost activat" });
             db.close();
         });
     });
@@ -259,12 +264,13 @@ router.post('/users/login', function(req, res) {
                 return;
             }
             if(!user){
-                res.json({ message: 'Utilizator neinregistrat' });
+                //res.json({ message: 'Utilizator neinregistrat' });
+                //throw new Error("Utilizator neinregistrat");
+                res.status(500).send('Utilizator neinregistrat!');
                 db.close();
                 return;
             }
             if(user.active == false){
-                res.send({ message: 'Trebuie mai intai sa-ti activezi contul prin mail. Un email a fost trimis la adresa ta'});
                 var activationToken = cryptoJS.AES.encrypt(email, KEY).toString();
                 activationToken = encodeURIComponent(activationToken);
                 var mailOptions = {
@@ -279,7 +285,7 @@ router.post('/users/login', function(req, res) {
                         console.log(err);
                         return;
                     }
-                    res.json({ message: "Un email a fost trimis la adresa dumeavoastra" });
+                    res.status(500).send('Trebuie mai intai sa-ti activezi contul prin mail. Un email a fost trimis la adresa ta');
                 });
                 db.close();
                 return;
@@ -291,7 +297,7 @@ router.post('/users/login', function(req, res) {
                     return;
                 }
                 if(!result){
-                    res.json({ message: 'Parola incorecta!' });
+                    res.status(500).send('Parola incorecta');
                     db.close();
                     return;
                 }
@@ -307,6 +313,7 @@ router.post('/users/login', function(req, res) {
                     message: 'Te-ai autentificat cu succes',
                     token: JWTToken
                 });
+                console.log('Bravo!');
                 db.close();
             });
         });
