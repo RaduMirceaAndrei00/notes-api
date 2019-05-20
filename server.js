@@ -400,7 +400,7 @@ router.get('/notes', checkToken, function(req, res) {
                 return;
             }
             dbo=db.db("mydb");
-            dbo.collection('user-notes').find({ email: autorizedData.email}).toArray(function(err, notes){
+            dbo.collection('user-notes').find({ email: autorizedData.email}).sort({_id: -1}).toArray(function(err, notes){
                 if(err)
                     res.send(err);
                 else
@@ -413,6 +413,7 @@ router.get('/notes', checkToken, function(req, res) {
 router.post('/notes', checkToken, function(req, res) {
     jwt.verify(req.token, KEY, function(err, autorizedData) {
         if(err){
+            console.log('jwt nu functioneaza');
             res.send(err);
             return;
         }
@@ -422,15 +423,19 @@ router.post('/notes', checkToken, function(req, res) {
             email: autorizedData.email  
         };
         if(!item.title){
-            res.json({ message: "Nu ai compeltat campul titlu" });
+            console.log("Nu ai compeltat campul titlu");
+            console.log(req.body.title);
+            res.status(500).send("Nu ai compeltat campul titlu");
             return;
         }
         if(!item.text){
-            res.json({ message: "Nu ai compeltat campul text" });
+            console.log("Nu ai compeltat campul text");
+            res.status(500).send("Nu ai compeltat campul text");
             return;
         }
         mongo.connect(url, { useNewUrlParser: true }, function(err, db) {
             if(err){
+                console.log('Conexiune baza de date esuata');
                 res.send(err);
                 db.close();
                 return;
@@ -439,8 +444,14 @@ router.post('/notes', checkToken, function(req, res) {
             dbo.collection('user-notes').insertOne(item, function(err, result){
                 if(err)
                     res.send(err);
-                else
-                    res.json({ message: "Notita creata cu succes!" });
+                else{
+                    //let userId = (req as any).user._id;
+                    res.json({ _id: item._id,
+                                title: item.title, 
+                                text: item.text,
+                                email: item.email
+                            });
+                }
                 db.close();
             });
         });
