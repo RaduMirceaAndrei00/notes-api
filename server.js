@@ -41,6 +41,7 @@ mongo.MongoClient.connect('mongodb://localhost:27017', {useNewUrlParser: true})
     .then(function (db) {
         Users = db.collection('user-data');
         Notes = db.collection('user-notes');
+        Codes = db.collection('user-codes');
     });
 
 var checkToken = function(req, res, next) {
@@ -148,12 +149,19 @@ router.post('/users/register', async function(req, res) {
         from: 'bestnotes16@gmail.com',
         to: item.email,
         subject: 'Activare cont BestNotes',
-        text: 'Dati click pe link-ul:http://localhost:8084/users/activation/'+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
+        text: 'Dati click pe link-ul:http://localhost:4200/activate?code='+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
     };
+    codeItem = {code: activationToken};
+    try {
+        await Codes.insertOne(codeItem);
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
     try{
         await transporter.sendMail(mailOptions);
     } catch(err){
-            res.send(err);
+            res.status(500).send(err);
             console.log(err);
             return;
     }
@@ -170,17 +178,41 @@ router.post('/users/register', async function(req, res) {
     try {
         await Users.insertOne(item);
     } catch(err){
-            res.status(500).send(err);
-            return;
+         res.status(500).send(err);
+        return;
     }
     res.json({ message: "Utilizator creat cu succes! Aplicatia noastra va va trimite un mail de validare in cateva momente. Verificati mail-ul pentru a va activa contul, apoi puteti accesa link-ul de autentificare." });                    
 });
 
 router.get('/users/activation/:token', async function(req, res){
     var activationToken = req.params.token;
+    var encryptedToken = encodeURIComponent(activationToken);
     activationToken = decodeURIComponent(activationToken);
     var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
     decryptedToken = decryptedToken.toString(cryptoJS.enc.Utf8);
+    let code;
+    try{
+        code = await Codes.findOne({code: encryptedToken});
+        if(!code) {
+            throw Error("Cod inexistent sau expirat");
+        }                
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
+    try{
+        await Codes.deleteOne({code: encryptedToken});
+                
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
+    try{
+        await Users.findOne({ email: decryptedToken });
+    } catch(err){
+        res.status(500).send(err);
+        return;
+    }
     try{
         await Users.updateOne({ email: decryptedToken }, { $set: { active: true } });
     } catch(err){
@@ -189,15 +221,36 @@ router.get('/users/activation/:token', async function(req, res){
     }
 });
 
-router.get('/users/forgotPassword', async function(req, res) {
-    var activationToken = cryptoJS.AES.encrypt(req.body.email, KEY).toString();
+router.post('/users/forgotPassword', async function(req, res) {
+    var email = req.body.email;
+    var activationToken = cryptoJS.AES.encrypt(email, KEY).toString();
     activationToken = encodeURIComponent(activationToken);
     var mailOptions = {
         from: 'bestnotes16@gmail.com',
         to: req.body.email,
         subject: 'Resetare parola',
-        text: 'Dati click pe link-ul:http://localhost:8084/users/forgotPassword/'+activationToken+' pentru a va reseta parola contului de pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat resetarea parolei va rugam sa ignorati mail-ul!'
+        text: 'Dati click pe link-ul:http://localhost:4200/changePassword?code='+activationToken+' pentru a va reseta parola contului de pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat resetarea parolei va rugam sa ignorati mail-ul!'
     };
+    let user;
+    try {
+        user = await Users.findOne({ email: email });
+    } catch(err) {
+            res.status(500).send(err);
+            return;
+    }
+    if(!user){
+        //res.json({ message: 'Utilizator neinregistrat' });
+        //throw new Error("Utilizator neinregistrat");
+        res.status(500).send('Utilizator neinregistrat!');
+        return;
+    }
+    item = {code: activationToken};
+    try {
+        await Codes.insertOne(item);
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
     try{
         await transporter.sendMail(mailOptions);
     } catch(err){
@@ -209,11 +262,34 @@ router.get('/users/forgotPassword', async function(req, res) {
 });
 router.put('/users/forgotPassword/:token', async function(req, res) {
     var activationToken = req.params.token;
+    var encryptedToken = encodeURIComponent(activationToken);
     activationToken = decodeURIComponent(activationToken);
     var decryptedToken = cryptoJS.AES.decrypt(activationToken, KEY);
     decryptedToken = decryptedToken.toString(cryptoJS.enc.Utf8);
     var password = req.body.password;
     var passwordConfirmation = req.body.passwordConfirmation;
+    try{
+        code = await Codes.findOne({code: encryptedToken});
+        if(!code) {
+            throw Error("Cod inexistent sau expirat");
+        }          
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
+    try{
+        await Codes.deleteOne({code: encryptedToken});
+                
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
+    try{
+        await Users.findOne({ email: decryptedToken });
+    } catch(err){
+        res.status(500).send(err);
+        return;
+    }
     if( password!==passwordConfirmation ){
         res.json({ message: "Parola din campul parola difera de cea din campul confirmare parola, va rog sa le introduceti din nou" });
         return;
@@ -244,6 +320,7 @@ router.post('/users/login', async function(req, res) {
     var email = req.body.email;
     var password = req.body.password;
     let user;
+    console.log(req.body);
     try {
         user = await Users.findOne({ email: email });
     } catch(err) {
@@ -263,8 +340,15 @@ router.post('/users/login', async function(req, res) {
             from: 'bestnotes16@gmail.com',
             to: email,
             subject: 'Activare cont BestNotes',
-            text: 'Dati click pe link-ul:http://localhost:8084/users/activation/'+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
+            text: 'Dati click pe link-ul:http://localhost:4200/activate?code='+activationToken+' pentru a va activa contul pe aplicatia BestNotes. Daca nu dumneavoastra ati solicitat cont pe BestNotes va rugam sa ignorati mail-ul!'
         };
+        codeItem = {code: activationToken};
+        try {
+            await Codes.insertOne(codeItem);
+        } catch(err) {
+            res.status(500).send(err);
+            return;
+        }       
         try {
             await transporter.sendMail(mailOptions);
         } catch(err){
