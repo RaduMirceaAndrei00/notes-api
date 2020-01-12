@@ -393,6 +393,29 @@ router.put('/users/changePassword', checkToken, async function(req, res){
         res.status(500).send(err);
         return;
     }
+    let user;
+    try {
+        user = await Users.findOne({ email:autorizedData.email });
+    } catch(err){
+        res.json({ message: 'Utilizator inexistent!' });
+        res.status(500).send(err);
+        return;
+    }
+    let result;
+    try {
+        result = await bcrypt.compare(req.body.passwordOld, user.password);
+    } catch(err){
+        res.status(500).send(err);
+        return;
+    }
+    try {
+        if(!result){
+            throw Error("Parola incorecta");
+        }
+    } catch(err){
+        res.status(500).send(err);
+        return;
+    }
     if(req.body.password !== req.body.passwordConfirmation){
         res.json({ message: 'Parola din campul parola difera de cea din campul confirmare parola' });
         return;
