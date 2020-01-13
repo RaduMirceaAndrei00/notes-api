@@ -385,6 +385,23 @@ router.post('/users/login', async function(req, res) {
     console.log('Bravo!');
 });
 
+router.get('/user', checkToken, async function(req, res) {
+    let autorizedData, user;
+    try{
+        autorizedData = await jwt.verify(req.token, KEY);
+        user = await Users.findOne({ email: autorizedData.email });
+        res.json({
+            firstName: user.firstName,
+            lastName: user.lastName,
+            userName: user.userName,
+            phoneNumber: user.phoneNumber
+        });
+    } catch(err) {
+        res.status(500).send(err);
+        return;
+    }
+});
+
 router.put('/users/changePassword', checkToken, async function(req, res){
     let autorizedData;
     try {
